@@ -63,6 +63,13 @@ dialog input[type=text]:focus-visible{outline:3px solid var(--accent);outline-of
 input[type=range]{width:100%;accent-color:var(--accent);margin:4px 0 14px}
 .qty-price{font-size:17px;margin-bottom:4px}
 .qty-price b{color:var(--accent)}
+.no-wa{margin-top:10px;font-size:14px;color:var(--accent);background:none;border:0;text-decoration:underline;cursor:pointer;padding:0;font:inherit}
+#mail-wrap{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+#mail-wrap[hidden]{display:none}
+#mail-wrap label{display:block;font-size:13px;color:var(--muted);margin:8px 0 4px}
+#mail-msg{margin-top:10px;font-size:14px}
+#mail-msg.ok{color:var(--ok)}
+#mail-msg.err{color:#C2410C}
 </style>
 </head>
 <body>
@@ -124,12 +131,19 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:4px 0 14px}
 <a class="btn alt" id="d-open" target="_blank" rel="noopener">افتح الحساب على إنستغرام</a>
 <label class="chk"><input type="checkbox" id="d-ok"><span>تأكدت أن الحساب موجود وأنه عام</span></label>
 <a class="btn" id="d-send" target="_blank" rel="noopener" aria-disabled="true">أرسل الطلب عبر واتساب</a>
+<button class="no-wa" id="no-wa-btn" type="button">ليس لدي واتساب، أرسل برسالة أخرى</button>
+<div id="mail-wrap" hidden>
+<label for="mail-contact">رقم هاتفك أو بريدك الإلكتروني للرد عليك</label>
+<input type="text" id="mail-contact" placeholder="رقم الهاتف أو البريد الإلكتروني">
+<button class="btn" id="mail-send" type="button">أرسل الطلب</button>
+<div id="mail-msg" aria-live="polite"></div>
+</div>
 </div>
 <button class="btn alt" id="d-close" type="button">إلغاء</button>
 </dialog>
 
 <script>
-// عدّل الأرقام والأسعار هنا، وضع رقم واتساب الخاص بك مكان PHONE (مع رمز الدولة بدون +)
+// الأسعار ورقم واتساب يُقرآن من config.json (يعدّلهما مالك المتجر من admin.html)
 var PHONE="21690215150";
 var PRICE_UNIT=" دينار";
 var packs={
@@ -137,6 +151,13 @@ var packs={
  l:[[100,1],[200,2],[500,5],[1000,10],[2000,18],[5000,45],[10000,85]]
 };
 var nf=new Intl.NumberFormat("fr-FR");
+fetch("config.json?t="+Date.now()).then(function(r){return r.json()}).then(function(cfg){
+ if(cfg.phone)PHONE=cfg.phone;
+ if(cfg.priceUnit)PRICE_UNIT=cfg.priceUnit;
+ if(cfg.f)packs.f=cfg.f;
+ if(cfg.l)packs.l=cfg.l;
+ render("f","p-f");render("l","p-l");
+}).catch(function(){});
 function render(k,id){
  var name=k==="f"?"متابع":"لايك";
  document.getElementById(id).innerHTML=packs[k].map(function(p){
@@ -194,7 +215,7 @@ function setupQty(kind,name){
   orderKind=kind;toggleLinkField();
   $("d-pick").textContent="الطلب: "+pick;
   $("d-user").value="";$("d-res").textContent="";$("d-res").className="";
-  $("d-next").hidden=true;$("d-ok").checked=false;$("d-send").setAttribute("aria-disabled","true");
+  $("d-next").hidden=true;$("d-ok").checked=false;$("d-send").setAttribute("aria-disabled","true");$("mail-wrap").hidden=true;$("mail-contact").value="";$("mail-msg").textContent="";
   dlg.showModal();
  };
 }
@@ -216,7 +237,7 @@ document.addEventListener("click",function(e){
  pick=b.dataset.q;orderKind=b.dataset.kind;toggleLinkField();
  $("d-pick").textContent="الطلب: "+pick;
  $("d-user").value="";$("d-res").textContent="";$("d-res").className="";
- $("d-next").hidden=true;$("d-ok").checked=false;$("d-send").setAttribute("aria-disabled","true");
+ $("d-next").hidden=true;$("d-ok").checked=false;$("d-send").setAttribute("aria-disabled","true");$("mail-wrap").hidden=true;$("mail-contact").value="";$("mail-msg").textContent="";
  dlg.showModal();
 });
 $("d-close").onclick=function(){dlg.close()};
@@ -232,6 +253,28 @@ $("d-check").onclick=function(){
  $("d-next").hidden=false;sendLink();
 };
 $("d-link").oninput=sendLink;
+var FORM_URL="https://formspree.io/f/xwlobdnl";
+$("no-wa-btn").onclick=function(){
+ $("mail-wrap").hidden=!$("mail-wrap").hidden;
+ $("mail-msg").textContent="";$("mail-msg").className="";
+};
+$("mail-send").onclick=function(){
+ var contact=$("mail-contact").value.trim(),m=$("mail-msg");
+ if(!user){m.className="err";m.textContent="تحقق من اسم الحساب أولاً.";return}
+ if(!contact){m.className="err";m.textContent="اكتب رقم هاتفك أو بريدك حتى نرد عليك.";return}
+ var link=$("d-link").value.trim();
+ var body={order:pick,account:"@"+user,contact:contact};
+ if(orderKind==="l"&&link)body.post_link=link;
+ m.className="";m.textContent="جارٍ الإرسال...";
+ fetch(FORM_URL,{
+  method:"POST",
+  headers:{"Content-Type":"application/json","Accept":"application/json"},
+  body:JSON.stringify(body)
+ }).then(function(r){
+  if(r.ok){m.className="ok";m.textContent="✓ وصلنا طلبك، سنتواصل معك قريباً.";$("mail-contact").value=""}
+  else{m.className="err";m.textContent="تعذر الإرسال، حاول مرة أخرى."}
+ }).catch(function(){m.className="err";m.textContent="تعذر الإرسال، تحقق من اتصالك بالإنترنت."});
+};
 $("d-ok").onchange=function(){$("d-send").setAttribute("aria-disabled",this.checked?"false":"true")};
 document.getElementById("t-f").onclick=function(){show("f")};
 document.getElementById("t-l").onclick=function(){show("l")};
